@@ -1,0 +1,36 @@
+{
+  "name": "sistema-gestao-tarefas",
+  "version": "1.0.0",
+  "description": "Sistema completo de gestão de tarefas e projetos em JavaScript",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js",
+    "test": "echo \"Testes não configurados ainda\" && exit 1"
+  },
+  "keywords": [
+    "gestao",
+    "tarefas",
+    "projetos",
+    "dashboard",
+    "javascript",
+    "web",
+    "sistema"
+  ],
+  "author": "Sistema de Gestão",
+  "license": "MIT",
+  "engines": {
+    "node": ">=12.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/crsandrade/near-betting-platform.git"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead"
+  ]
+}
