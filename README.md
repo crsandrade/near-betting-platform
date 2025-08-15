@@ -12,44 +12,123 @@ Um sistema completo de gestão de tarefas e projetos desenvolvido em JavaScript 
 - **Configurações**: Modo escuro, notificações, exportar/importar dados
 - **Interface Responsiva**: Funciona em desktop e mobile
 
-## 📁 Estrutura do Projeto
+## 🏗️ Estrutura do Projeto
 
 ```
-├── src/
-│   └── server.js          # Servidor HTTP
 ├── public/
-│   └── index.html         # Interface principal
+│   └── index.html              # Interface principal
 ├── assets/
-│   ├── styles.css         # Estilos CSS
-│   └── app.js            # Lógica JavaScript
-├── package.json          # Configurações do projeto
-├── .gitignore           # Arquivos ignorados pelo Git
-└── README.md            # Documentação
+│   ├── styles.css              # Estilos CSS
+│   └── app.js                  # Lógica JavaScript
+├── src/
+│   ├── server.js               # Servidor Node.js
+│   ├── init.js                 # Sistema de inicialização
+│   ├── config/
+│   │   ├── database.js         # Configurações de banco de dados
+│   │   └── environments.js     # Configurações por ambiente
+│   ├── database/
+│   │   └── DataRepository.js   # Camada de abstração de dados
+│   └── utils/
+│       ├── DataMigration.js    # Utilitários de migração
+│       └── migrate.js          # Script de migração CLI
+├── .env.example               # Exemplo de variáveis de ambiente
+├── package.json               # Dependências e scripts
+├── .gitignore                # Arquivos ignorados
+└── README.md                 # Documentação
 ```
 
-## 🔧 Instalação e Uso
+## 🚀 Instalação e Uso
 
 ### Pré-requisitos
-- Node.js (versão 12 ou superior)
+- Node.js (versão 14 ou superior)
+- npm ou yarn
+- (Opcional) MongoDB, PostgreSQL ou Firebase para banco de dados
 
-### Instalação
+### Passos para instalação
 
-1. Clone o repositório:
+1. **Clone o repositório**:
+   ```bash
+   git clone https://github.com/crsandrade/near-betting-platform.git
+   cd near-betting-platform
+   ```
+
+2. **Instale as dependências**:
+   ```bash
+   npm install
+   ```
+
+3. **Configure as variáveis de ambiente** (opcional):
+   ```bash
+   cp .env.example .env
+   # Edite o arquivo .env com suas configurações
+   ```
+
+4. **Inicie o servidor**:
+   ```bash
+   npm start
+   ```
+
+5. **Acesse o sistema**:
+   Abra seu navegador e vá para `http://localhost:3000`
+
+## 💾 Sistema de Banco de Dados
+
+O sistema suporta múltiplos tipos de armazenamento:
+
+### Tipos Suportados
+- **localStorage** (padrão): Armazenamento local no navegador
+- **MongoDB**: Banco de dados NoSQL
+- **PostgreSQL**: Banco de dados relacional
+- **Firebase**: Plataforma do Google
+
+### Configuração por Ambiente
+
+O sistema utiliza diferentes configurações baseadas na variável `NODE_ENV`:
+
+- **development**: Configurações para desenvolvimento local
+- **production**: Configurações otimizadas para produção
+- **test**: Configurações para testes automatizados
+
+### Scripts Disponíveis
+
 ```bash
-git clone https://github.com/crsandrade/near-betting-platform.git
-cd near-betting-platform
+# Desenvolvimento
+npm run dev                 # Inicia servidor com auto-reload
+npm start                   # Inicia servidor em produção
+
+# Sistema
+npm run system:init         # Inicializa o sistema
+npm run system:info         # Mostra informações do sistema
+npm run env:validate        # Valida configurações do ambiente
+
+# Banco de Dados
+npm run db:test             # Testa conexão com banco
+npm run db:stats            # Mostra estatísticas dos dados
+
+# Migração de Dados
+npm run migrate:help        # Ajuda do sistema de migração
+npm run migrate:status      # Status atual do sistema
+npm run migrate:test        # Testa conectividade com todos os bancos
+npm run migrate:backup      # Lista backups disponíveis
+npm run migrate:cleanup     # Remove backups antigos
 ```
 
-2. Inicie o servidor:
+### Migração entre Bancos de Dados
+
+Para migrar dados entre diferentes tipos de banco:
+
 ```bash
-npm start
-# ou
-node src/server.js
-```
+# Migrar do localStorage para MongoDB
+npm run migrate -- --from localStorage --to mongodb
 
-3. Acesse no navegador:
-```
-http://localhost:3000
+# Migrar com backup
+npm run migrate -- --from localStorage --to postgresql --backup
+
+# Testar conectividade
+npm run migrate:test
+
+# Ver status do sistema
+npm run migrate:status
 ```
 
 ## 🔐 Credenciais de Acesso

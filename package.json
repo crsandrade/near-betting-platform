@@ -1,33 +1,63 @@
 {
-  "name": "sistema-gestao-tarefas",
+  "name": "task-management-system",
   "version": "1.0.0",
-  "description": "Sistema completo de gestão de tarefas e projetos em JavaScript",
+  "description": "Sistema completo de gestão de tarefas e projetos com interface moderna e suporte a múltiplos bancos de dados",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node src/server.js",
-    "test": "echo \"Testes não configurados ainda\" && exit 1"
+    "dev": "nodemon src/server.js",
+    "migrate": "node src/utils/migrate.js",
+    "migrate:help": "node src/utils/migrate.js --help",
+    "migrate:status": "node src/utils/migrate.js --status",
+    "migrate:test": "node src/utils/migrate.js --test",
+    "migrate:backup": "node src/utils/migrate.js --list-backups",
+    "migrate:cleanup": "node src/utils/migrate.js --cleanup",
+    "db:test": "node -e \"require('./src/database/DataRepository.js').DataRepository.testConnection().then(r => console.log('✅ Conexão OK:', r)).catch(e => console.error('❌ Erro:', e.message))\"",
+    "db:stats": "node -e \"const {DataRepository} = require('./src/database/DataRepository.js'); const repo = new DataRepository(); repo.getStats().then(s => console.log('📊 Estatísticas:', s)).catch(e => console.error('❌ Erro:', e.message))\"",
+    "system:init": "node -e \"require('./src/init.js').initialize().then(() => console.log('✅ Sistema inicializado')).catch(e => console.error('❌ Erro:', e.message))\"",
+    "system:info": "node -e \"console.log('📋 Informações do Sistema:', require('./src/init.js').getSystemInfo())\"",
+    "env:validate": "node -e \"const env = require('./src/config/environments.js'); const result = env.validateConfig(); console.log(result.valid ? '✅ Configurações válidas' : '❌ Erros:', result.errors)\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
-    "gestao",
-    "tarefas",
-    "projetos",
+    "task-management",
+    "project-management",
     "dashboard",
     "javascript",
-    "web",
-    "sistema"
+    "html",
+    "css",
+    "database",
+    "mongodb",
+    "postgresql",
+    "firebase",
+    "data-migration"
   ],
   "author": "Sistema de Gestão",
   "license": "MIT",
   "engines": {
-    "node": ">=12.0.0"
+    "node": ">=14.0.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1"
+  },
+  "optionalDependencies": {
+    "mongodb": "^6.3.0",
+    "pg": "^8.11.3",
+    "firebase-admin": "^12.0.0",
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/crsandrade/near-betting-platform.git"
   },
-  "dependencies": {},
-  "devDependencies": {},
+  "bugs": {
+    "url": "https://github.com/crsandrade/near-betting-platform/issues"
+  },
+  "homepage": "https://github.com/crsandrade/near-betting-platform#readme",
   "browserslist": [
     "> 1%",
     "last 2 versions",

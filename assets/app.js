@@ -5,47 +5,157 @@ class TaskManager {
         this.currentUser = null;
         this.tasks = [];
         this.projects = [];
-        this.users = [
-            { username: 'admin', password: 'admin123', displayName: 'Administrador', email: 'admin@sistema.com', role: 'admin' },
-            { username: 'user', password: 'user123', displayName: 'Usuário Padrão', email: 'user@sistema.com', role: 'user' }
-        ];
+        this.users = [];
+        this.dataRepository = new DataRepository('localStorage');
         
         this.init();
     }
 
-    init() {
-        this.loadData();
+    async init() {
+        await this.loadData();
         this.setupEventListeners();
         this.checkAuthStatus();
-        this.generateSampleData();
+        await this.generateSampleData();
+        
+        // Verificar autenticação periodicamente
+        this.startAuthCheck();
+        
+        // Proteger contra manipulação do localStorage
+        this.protectLocalStorage();
+    }
+    
+    // Verificação periódica de autenticação
+    startAuthCheck() {
+        setInterval(() => {
+            this.validateSession();
+        }, 60000); // Verificar a cada minuto
+    }
+    
+    // Validar sessão atual
+    validateSession() {
+        const savedUser = localStorage.getItem('currentUser');
+        if (!savedUser && this.currentUser) {
+            // LocalStorage foi limpo, mas usuário ainda está "logado"
+            this.logout();
+            this.showNotification('Sessão expirada. Faça login novamente.', 'warning');
+        } else if (savedUser && !this.currentUser) {
+            // LocalStorage tem dados, mas usuário não está logado
+            try {
+                this.currentUser = JSON.parse(savedUser);
+                this.showDashboard();
+            } catch (error) {
+                localStorage.removeItem('currentUser');
+                this.showLogin();
+            }
+        }
+    }
+    
+    // Proteger localStorage contra manipulação
+    protectLocalStorage() {
+        // Adicionar timestamp para validar sessão
+        if (this.currentUser) {
+            const sessionData = {
+                user: this.currentUser,
+                timestamp: Date.now(),
+                sessionId: this.generateId()
+            };
+            localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
+            localStorage.setItem('sessionData', JSON.stringify(sessionData));
+        }
     }
 
     // Autenticação
     checkAuthStatus() {
         const savedUser = localStorage.getItem('currentUser');
-        if (savedUser) {
-            this.currentUser = JSON.parse(savedUser);
-            this.showDashboard();
+        const sessionData = localStorage.getItem('sessionData');
+        
+        if (savedUser && sessionData) {
+            try {
+                const session = JSON.parse(sessionData);
+                const user = JSON.parse(savedUser);
+                
+                // Verificar se a sessão não expirou
+                if (session.expiresAt && Date.now() > session.expiresAt) {
+                    this.logout();
+                    this.showNotification('Sessão expirada. Faça login novamente.', 'warning');
+                    return;
+                }
+                
+                // Verificar integridade dos dados
+                if (session.user && session.user.username === user.username) {
+                    this.currentUser = user;
+                    this.setupSessionTimeout();
+                    this.showDashboard();
+                } else {
+                    // Dados inconsistentes, forçar novo login
+                    this.logout();
+                    this.showNotification('Dados de sessão inválidos. Faça login novamente.', 'error');
+                }
+            } catch (error) {
+                // Erro ao parsear dados, limpar e forçar login
+                localStorage.removeItem('currentUser');
+                localStorage.removeItem('sessionData');
+                this.showLogin();
+            }
         } else {
             this.showLogin();
         }
     }
 
-    login(username, password) {
+    async login(username, password) {
         const user = this.users.find(u => u.username === username && u.password === password);
         if (user) {
             this.currentUser = user;
+            
+            // Criar dados de sessão seguros
+            const sessionData = {
+                user: user,
+                timestamp: Date.now(),
+                sessionId: this.generateId(),
+                expiresAt: Date.now() + (24 * 60 * 60 * 1000) // 24 horas
+            };
+            
             localStorage.setItem('currentUser', JSON.stringify(user));
+            localStorage.setItem('sessionData', JSON.stringify(sessionData));
+            
             this.showDashboard();
             this.showNotification('Login realizado com sucesso!', 'success');
+            
+            // Configurar timeout de sessão
+            this.setupSessionTimeout();
+            
             return true;
         }
         return false;
     }
+    
+    // Configurar timeout de sessão
+    setupSessionTimeout() {
+        // Limpar timeout anterior se existir
+        if (this.sessionTimeout) {
+            clearTimeout(this.sessionTimeout);
+        }
+        
+        // Configurar novo timeout (24 horas)
+        this.sessionTimeout = setTimeout(() => {
+            this.logout();
+            this.showNotification('Sessão expirada por inatividade', 'warning');
+        }, 24 * 60 * 60 * 1000);
+    }
 
     logout() {
         this.currentUser = null;
+        
+        // Limpar todos os dados de sessão
         localStorage.removeItem('currentUser');
+        localStorage.removeItem('sessionData');
+        
+        // Limpar timeout de sessão
+        if (this.sessionTimeout) {
+            clearTimeout(this.sessionTimeout);
+            this.sessionTimeout = null;
+        }
+        
         this.showLogin();
         this.showNotification('Logout realizado com sucesso!', 'info');
     }
@@ -54,36 +164,73 @@ class TaskManager {
     showLogin() {
         document.getElementById('loginScreen').classList.add('active');
         document.getElementById('dashboardScreen').classList.remove('active');
+        // Limpar dados sensíveis quando mostrar login
+        this.clearSensitiveData();
     }
 
     showDashboard() {
+        // Verificar se o usuário está realmente autenticado
+        if (!this.currentUser) {
+            this.showLogin();
+            this.showNotification('Acesso negado. Faça login primeiro.', 'error');
+            return;
+        }
+        
         document.getElementById('loginScreen').classList.remove('active');
         document.getElementById('dashboardScreen').classList.add('active');
         document.getElementById('currentUser').textContent = this.currentUser.displayName;
         this.updateDashboard();
     }
+    
+    // Limpar dados sensíveis
+    clearSensitiveData() {
+        // Não limpar tasks/projects pois podem ser dados públicos
+        // Apenas garantir que funcionalidades administrativas sejam protegidas
+    }
+    
+    // Verificar se o usuário tem permissão para uma ação
+    hasPermission(action) {
+        if (!this.currentUser) return false;
+        
+        // Admins têm todas as permissões
+        if (this.currentUser.role === 'admin') return true;
+        
+        // Usuários normais têm permissões limitadas
+        const userPermissions = ['view_tasks', 'create_task', 'edit_own_task', 'view_projects', 'create_project'];
+        const adminPermissions = ['delete_task', 'delete_project', 'manage_users', 'system_settings', 'edit_any_task'];
+        
+        return userPermissions.includes(action);
+    }
 
     // Gerenciamento de dados
-    loadData() {
-        const savedTasks = localStorage.getItem('tasks');
-        const savedProjects = localStorage.getItem('projects');
-        
-        if (savedTasks) {
-            this.tasks = JSON.parse(savedTasks);
-        }
-        
-        if (savedProjects) {
-            this.projects = JSON.parse(savedProjects);
+    async loadData() {
+        try {
+            this.tasks = await this.dataRepository.getTasks();
+            this.projects = await this.dataRepository.getProjects();
+            this.users = await this.dataRepository.getUsers();
+        } catch (error) {
+            console.error('Erro ao carregar dados:', error);
+            this.tasks = [];
+            this.projects = [];
+            this.users = [];
         }
     }
 
-    saveData() {
-        localStorage.setItem('tasks', JSON.stringify(this.tasks));
-        localStorage.setItem('projects', JSON.stringify(this.projects));
+    async saveData() {
+        // Método mantido para compatibilidade, mas agora os dados são salvos automaticamente
+        // pela DataRepository em cada operação CRUD
+        console.log('Dados salvos automaticamente pela DataRepository');
     }
 
     // Geração de dados de exemplo
-    generateSampleData() {
+    async generateSampleData() {
+        if (this.users.length === 0) {
+            this.users = [
+                { username: 'admin', password: 'admin123', displayName: 'Administrador', email: 'admin@sistema.com', role: 'admin' },
+                { username: 'user', password: 'user123', displayName: 'Usuário Padrão', email: 'user@sistema.com', role: 'user' }
+            ];
+        }
+        
         if (this.tasks.length === 0) {
             this.tasks = [
                 {
@@ -172,7 +319,7 @@ class TaskManager {
             ];
         }
 
-        this.saveData();
+        await this.saveData();
     }
 
     generateId() {
@@ -180,84 +327,157 @@ class TaskManager {
     }
 
     // Gerenciamento de tarefas
-    addTask(taskData) {
-        const task = {
-            id: this.generateId(),
-            ...taskData,
-            createdAt: new Date().toISOString()
-        };
-        
-        if (task.status === 'completed') {
-            task.completedAt = new Date().toISOString();
+    async addTask(taskData) {
+        // Verificar autenticação
+        if (!this.currentUser) {
+            this.showNotification('Você precisa estar logado para adicionar tarefas', 'error');
+            this.showLogin();
+            return;
         }
         
-        this.tasks.push(task);
-        this.saveData();
-        this.updateDashboard();
-        this.showNotification('Tarefa criada com sucesso!', 'success');
+        // Verificar permissão
+        if (!this.hasPermission('create_task')) {
+            this.showNotification('Você não tem permissão para criar tarefas', 'error');
+            return;
+        }
+        
+        try {
+            const task = await this.dataRepository.createTask({
+                ...taskData,
+                createdBy: this.currentUser.username
+            });
+            this.tasks.push(task);
+            this.updateDashboard();
+            this.showNotification('Tarefa criada com sucesso!', 'success');
+        } catch (error) {
+            console.error('Erro ao criar tarefa:', error);
+            this.showNotification('Erro ao criar tarefa!', 'error');
+        }
     }
 
-    updateTask(id, taskData) {
-        const index = this.tasks.findIndex(t => t.id === id);
-        if (index !== -1) {
-            const oldStatus = this.tasks[index].status;
-            this.tasks[index] = { ...this.tasks[index], ...taskData };
-            
-            // Marcar data de conclusão se mudou para completed
-            if (oldStatus !== 'completed' && taskData.status === 'completed') {
-                this.tasks[index].completedAt = new Date().toISOString();
-            } else if (taskData.status !== 'completed') {
-                delete this.tasks[index].completedAt;
+    async updateTask(id, taskData) {
+        // Verificar autenticação
+        if (!this.currentUser) {
+            this.showNotification('Você precisa estar logado para atualizar tarefas', 'error');
+            this.showLogin();
+            return;
+        }
+        
+        // Verificar se pode editar a tarefa
+        const task = this.tasks.find(t => t.id === id);
+        if (task && task.createdBy !== this.currentUser.username && !this.hasPermission('edit_any_task')) {
+            this.showNotification('Você só pode editar suas próprias tarefas', 'error');
+            return;
+        }
+        
+        try {
+            const updatedTask = await this.dataRepository.updateTask(id, taskData);
+            const index = this.tasks.findIndex(t => t.id === id);
+            if (index !== -1) {
+                this.tasks[index] = updatedTask;
             }
-            
-            this.saveData();
             this.updateDashboard();
             this.showNotification('Tarefa atualizada com sucesso!', 'success');
+        } catch (error) {
+            console.error('Erro ao atualizar tarefa:', error);
+            this.showNotification('Erro ao atualizar tarefa!', 'error');
         }
     }
 
-    deleteTask(id) {
-        this.tasks = this.tasks.filter(t => t.id !== id);
-        this.saveData();
-        this.updateDashboard();
-        this.showNotification('Tarefa excluída com sucesso!', 'info');
+    async deleteTask(id) {
+        // Verificar autenticação
+        if (!this.currentUser) {
+            this.showNotification('Você precisa estar logado para excluir tarefas', 'error');
+            this.showLogin();
+            return;
+        }
+        
+        // Verificar permissão para deletar
+        if (!this.hasPermission('delete_task')) {
+            this.showNotification('Você não tem permissão para excluir tarefas', 'error');
+            return;
+        }
+        
+        try {
+            await this.dataRepository.deleteTask(id);
+            this.tasks = this.tasks.filter(t => t.id !== id);
+            this.updateDashboard();
+            this.showNotification('Tarefa excluída com sucesso!', 'info');
+        } catch (error) {
+            console.error('Erro ao excluir tarefa:', error);
+            this.showNotification('Erro ao excluir tarefa!', 'error');
+        }
     }
 
     // Gerenciamento de projetos
-    addProject(projectData) {
-        const project = {
-            id: this.generateId(),
-            ...projectData,
-            createdAt: new Date().toISOString()
-        };
+    async addProject(projectData) {
+        // Verificar autenticação
+        if (!this.currentUser) {
+            this.showNotification('Você precisa estar logado para criar projetos', 'error');
+            this.showLogin();
+            return;
+        }
         
-        this.projects.push(project);
-        this.saveData();
-        this.updateDashboard();
-        this.showNotification('Projeto criado com sucesso!', 'success');
-    }
-
-    updateProject(id, projectData) {
-        const index = this.projects.findIndex(p => p.id === id);
-        if (index !== -1) {
-            this.projects[index] = { ...this.projects[index], ...projectData };
-            this.saveData();
+        // Verificar permissão
+        if (!this.hasPermission('create_project')) {
+            this.showNotification('Você não tem permissão para criar projetos', 'error');
+            return;
+        }
+        
+        try {
+            const project = await this.dataRepository.createProject({
+                ...projectData,
+                createdBy: this.currentUser.username
+            });
+            this.projects.push(project);
             this.updateDashboard();
-            this.showNotification('Projeto atualizado com sucesso!', 'success');
+            this.showNotification('Projeto criado com sucesso!', 'success');
+        } catch (error) {
+            console.error('Erro ao criar projeto:', error);
+            this.showNotification('Erro ao criar projeto!', 'error');
         }
     }
 
-    deleteProject(id) {
-        this.projects = this.projects.filter(p => p.id !== id);
-        // Remover referências do projeto das tarefas
-        this.tasks.forEach(task => {
-            if (task.project === id) {
-                task.project = '';
+    async updateProject(id, projectData) {
+        try {
+            const updatedProject = await this.dataRepository.updateProject(id, projectData);
+            const index = this.projects.findIndex(p => p.id === id);
+            if (index !== -1) {
+                this.projects[index] = updatedProject;
             }
-        });
-        this.saveData();
-        this.updateDashboard();
-        this.showNotification('Projeto excluído com sucesso!', 'info');
+            this.updateDashboard();
+            this.showNotification('Projeto atualizado com sucesso!', 'success');
+        } catch (error) {
+            console.error('Erro ao atualizar projeto:', error);
+            this.showNotification('Erro ao atualizar projeto!', 'error');
+        }
+    }
+
+    async deleteProject(id) {
+        // Verificar autenticação
+        if (!this.currentUser) {
+            this.showNotification('Você precisa estar logado para excluir projetos', 'error');
+            this.showLogin();
+            return;
+        }
+        
+        // Verificar permissão para deletar
+        if (!this.hasPermission('delete_project')) {
+            this.showNotification('Você não tem permissão para excluir projetos', 'error');
+            return;
+        }
+        
+        try {
+            await this.dataRepository.deleteProject(id);
+            this.projects = this.projects.filter(p => p.id !== id);
+            // Recarregar tarefas para refletir as mudanças nas referências
+            this.tasks = await this.dataRepository.getTasks();
+            this.updateDashboard();
+            this.showNotification('Projeto excluído com sucesso!', 'info');
+        } catch (error) {
+            console.error('Erro ao excluir projeto:', error);
+            this.showNotification('Erro ao excluir projeto!', 'error');
+        }
     }
 
     // Atualização do dashboard
@@ -853,66 +1073,73 @@ class TaskManager {
     }
 
     // Exportar/Importar dados
-    exportData() {
-        const data = {
-            tasks: this.tasks,
-            projects: this.projects,
-            exportDate: new Date().toISOString()
-        };
-        
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `sistema-gestao-backup-${new Date().toISOString().split('T')[0]}.json`;
-        a.click();
-        
-        URL.revokeObjectURL(url);
-        this.showNotification('Dados exportados com sucesso!', 'success');
+    async exportData() {
+        try {
+            const data = await this.dataRepository.exportData();
+            
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `task-manager-backup-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            this.showNotification('Dados exportados com sucesso!', 'success');
+        } catch (error) {
+            console.error('Erro ao exportar dados:', error);
+            this.showNotification('Erro ao exportar dados!', 'error');
+        }
     }
 
-    importData(file) {
+    async importData(file) {
         const reader = new FileReader();
-        reader.onload = (e) => {
+        reader.onload = async (e) => {
             try {
                 const data = JSON.parse(e.target.result);
                 
-                if (data.tasks && data.projects) {
-                    this.tasks = data.tasks;
-                    this.projects = data.projects;
-                    this.saveData();
-                    this.updateDashboard();
-                    this.showNotification('Dados importados com sucesso!', 'success');
-                } else {
-                    throw new Error('Formato de arquivo inválido');
-                }
+                await this.dataRepository.importData(data);
+                
+                // Recarregar dados locais
+                this.tasks = await this.dataRepository.getTasks();
+                this.projects = await this.dataRepository.getProjects();
+                
+                this.updateDashboard();
+                this.showNotification('Dados importados com sucesso!', 'success');
             } catch (error) {
+                console.error('Erro ao importar dados:', error);
                 this.showNotification('Erro ao importar dados: ' + error.message, 'error');
             }
         };
         reader.readAsText(file);
     }
 
-    clearAllData() {
+    async clearAllData() {
         if (confirm('Tem certeza que deseja limpar todos os dados? Esta ação não pode ser desfeita.')) {
-            this.tasks = [];
-            this.projects = [];
-            this.saveData();
-            this.updateDashboard();
-            this.showNotification('Todos os dados foram limpos!', 'info');
+            try {
+                await this.dataRepository.clearAllData();
+                this.tasks = [];
+                this.projects = [];
+                this.updateDashboard();
+                this.showNotification('Todos os dados foram limpos!', 'info');
+            } catch (error) {
+                console.error('Erro ao limpar dados:', error);
+                this.showNotification('Erro ao limpar dados!', 'error');
+            }
         }
     }
 
     // Event Listeners
     setupEventListeners() {
         // Login form
-        document.getElementById('loginForm').addEventListener('submit', (e) => {
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
             
-            if (this.login(username, password)) {
+            if (await this.login(username, password)) {
                 document.getElementById('loginForm').reset();
                 document.getElementById('loginError').style.display = 'none';
             } else {
@@ -936,32 +1163,32 @@ class TaskManager {
         });
 
         // Task form
-        document.getElementById('taskForm').addEventListener('submit', (e) => {
+        document.getElementById('taskForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
             const taskData = Object.fromEntries(formData.entries());
             
             const taskId = e.target.dataset.taskId;
             if (taskId) {
-                this.updateTask(taskId, taskData);
+                await this.updateTask(taskId, taskData);
             } else {
-                this.addTask(taskData);
+                await this.addTask(taskData);
             }
             
             this.closeModal('taskModal');
         });
 
         // Project form
-        document.getElementById('projectForm').addEventListener('submit', (e) => {
+        document.getElementById('projectForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
             const projectData = Object.fromEntries(formData.entries());
             
             const projectId = e.target.dataset.projectId;
             if (projectId) {
-                this.updateProject(projectId, projectData);
+                await this.updateProject(projectId, projectData);
             } else {
-                this.addProject(projectData);
+                await this.addProject(projectData);
             }
             
             this.closeModal('projectModal');
